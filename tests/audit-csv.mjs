@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {addressMismatch} from '../public/address-check.mjs';
+import {evaluate,directPairs} from '../public/optimizer.mjs';
+import {directMapLink} from '../public/route-links.mjs';
+import {physicalVisits} from '../public/visit-utils.mjs';
+const a={countryCode:'AR',streetName:'Australia',streetNumber:'2448',localities:['Ciudad Autónoma de Buenos Aires'],locationType:'ROOFTOP'};
+assert.equal(addressMismatch(a,'Australia 2448','CABA'),'');assert(addressMismatch({...a,localities:['Villa Madero','Buenos Aires']},'Australia 2448','CABA'));assert(addressMismatch({...a,streetNumber:'2887'},'Larrazabal 28877','Mataderos'));
+assert(addressMismatch({...a,streetName:'Poeta Risso',streetNumber:'2745',localities:['Barracas','Ciudad Autónoma de Buenos Aires']},'Poeta Risso 2745','Williams C Morris'));
+assert.equal(addressMismatch({...a,streetName:'Poeta Risso',streetNumber:'2745',localities:['William C. Morris','Hurlingham','Buenos Aires']},'Poeta Risso 2745','willliams c morris. Buenos Aire'),'');
+const cfg={depotCoord:[0,0],start:540,end:1200,breakMinutes:30,returnHome:false,maxMapDestinations:10};
+const mk=(i,c=i,np='NP'+i)=>({id:i,idx:i,np,type:'Retiro',coord:[0,c/1000],address:'A'+i,windows:[[540,1200]],service:15});const source={...mk(1,1,'NP1'),note:'llevar a meli encinas directo'},target=mk(2,2,'NP1'),other=mk(3);const stops=[source,target,other];const matrix={durations:Array.from({length:4},()=>Array(4).fill(60)),distances:Array.from({length:4},()=>Array(4).fill(500))};const ctx={...cfg,...matrix,pickups:{},directPairs:directPairs(stops)};
+assert.equal(evaluate([source,other,target],ctx),null);assert(evaluate([source,target,other],ctx));assert.equal(evaluate([target,source,other],ctx),null);
+const route={timeline:Array.from({length:12},(_,i)=>({stop:mk(i+1,i<5?1:i-3),begin:540+i*15,end:555+i*15}))};assert.equal(physicalVisits(route),8);const link=directMapLink(route,cfg);assert.equal(new URL(link.url).hostname,'www.google.com');assert.equal(new URL(link.url).searchParams.get('waypoints').split('|').length,7);
+const long={timeline:Array.from({length:12},(_,i)=>({stop:mk(i+1),begin:540+i*15,end:555+i*15}))};assert.equal(directMapLink(long,cfg),null);
+console.log('PASS: localidad/altura incompatibles rechazadas, traslado directo sin desvíos y 12 movimientos en 8 visitas en un link Maps sin recortar.');
+const eleven=Array.from({length:11},(_,i)=>mk(i+1));const manyCtx={...cfg,pickups:{},durations:Array.from({length:12},()=>Array(12).fill(60)),distances:Array.from({length:12},()=>Array(12).fill(100))};assert.equal(evaluate(eleven,manyCtx),null);assert(evaluate(eleven,{...manyCtx,maxMapDestinations:0}));

@@ -1,0 +1,4 @@
+import {googleAccess,apiFailure,ApiError} from '@/lib/google';
+import {routeMatrix} from '@/lib/google-core.mjs';
+export const dynamic='force-dynamic';
+export async function POST(request:Request){try{const key=await googleAccess(request,'matrix',6);const raw=await request.text();if(raw.length>16000)throw new ApiError('El pedido es demasiado grande.',400);const data=JSON.parse(raw);if(!Array.isArray(data.coords)||data.coords.length<2||data.coords.length>86||data.coords.some((p:unknown)=>!Array.isArray(p)||p.length!==2||p.some(n=>typeof n!=='number'||!Number.isFinite(n))||Math.abs(p[0])>90||Math.abs(p[1])>180))throw new ApiError('Revisá las ubicaciones de las paradas.',400);if(typeof data.departureTime!=='string'||!Number.isFinite(Date.parse(data.departureTime)))throw new ApiError('Revisá la fecha y hora de salida.',400);return Response.json(await routeMatrix(key,data),{headers:{'Cache-Control':'no-store'}})}catch(e){return apiFailure(e)}}

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {evaluate,scorePlan,zoneEdges} from '../public/optimizer.mjs';
+import {moveToVehicle} from '../public/manual-routing.mjs';
+import {directMapLink} from '../public/route-links.mjs';
+const stops=[1,2,3].map((id)=>({id,idx:id,centerOnly:false,np:id<3?'PAIR':'OTHER',type:id===1?'Retiro':'Entrega',address:'Calle '+id,coord:[-34.6,-58.4+id*.01],windows:[[480,1000]],service:15}));
+const matrix={durations:Array.from({length:4},(_,i)=>Array.from({length:4},(_,j)=>Math.abs(i-j)*600)),distances:Array.from({length:4},(_,i)=>Array.from({length:4},(_,j)=>Math.abs(i-j)*1000))};
+const config={start:480,end:1000,vehicles:2,depotCoord:[-34.6,-58.4],depotAddress:'Campana',flexibleStart:true};
+const ctx={...matrix,...config,pickups:{PAIR:[1]}};
+const plan={...scorePlan([evaluate(stops.slice(0,2),ctx),evaluate(stops.slice(2),ctx)],[],zoneEdges(stops,matrix)),config,matrix,roadPaths:['old'],roads:{old:true}};
+const snapshot=JSON.stringify(plan);const moved=moveToVehicle(plan,2,1);
+assert.equal(JSON.stringify(plan),snapshot);assert.equal(moved.routes[0].timeline.length,0);assert.equal(moved.routes[1].timeline.length,3);
+const timeline=moved.routes[1].timeline;assert(timeline.findIndex(t=>t.stop.id===1)<timeline.findIndex(t=>t.stop.id===2));assert(moved.routes[1].end>plan.routes[1].end);assert.equal(moved.roadPaths,undefined);assert.equal(moved.manualChanges,1);
+assert.notDeepEqual(directMapLink(moved.routes[1],config),directMapLink(plan.routes[1],config));
+assert.throws(()=>moveToVehicle({...plan,config:{...config,end:510}},2,1),/orden válido/);
+assert.throws(()=>moveToVehicle(plan,2,9),/inválida/);
+console.log('PASS: whole NP transfer, fresh timelines and Maps links, unchanged input, infeasible moves rejected.');

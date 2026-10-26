@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {measureShared,decodePolyline,compareRoadPlans} from '../public/shared-roads.mjs';
+import {roadPath} from '../lib/google-core.mjs';
+const depot=[0,0],line=[[0,.01],[0,.02]],reverse=[...line].reverse();
+let m=measureShared([[line],[line]],depot);assert(Math.abs(m.pairKm-1.1132)<.01);assert.equal(m.depotKm,0);
+assert(Math.abs(measureShared([[line],[reverse]],depot).pairKm-m.pairKm)<.01);
+assert.equal(measureShared([[line],[[[-.005,.015],[.005,.015]]]],depot).pairKm,0);
+assert.equal(measureShared([[line],[[[.0003,.01],[.0003,.02]]]],depot).pairKm,0);
+assert.equal(measureShared([[line]],depot).pairKm,0);
+const triple=measureShared([[line],[line],[line]],depot);assert.equal(triple.pairs.length,3);assert(Math.abs(triple.pairKm-3*m.pairKm)<.01);
+const partial=measureShared([[line],[[[0,.015],[0,.025]]]],depot);assert(Math.abs(partial.pairKm-.5566)<.02);
+const near=measureShared([[[[0,0],[0,.01]]],[[[0,0],[0,.01]]]],depot);assert(Math.abs(near.depotKm-.3)<.01);
+assert.deepEqual(decodePolyline('_p~iF~ps|U_ulLnnqC_mqNvxq`@'),[[38.5,-120.2],[40.7,-120.95],[43.252,-126.453]]);assert.throws(()=>decodePolyline('_'));
+let called=false;await roadPath('test-key',{from:depot,to:[0,.01],departureTime:'2099-01-01T09:00:00Z'},async(url,options)=>{called=true;assert.equal(url,'https://routes.googleapis.com/directions/v2:computeRoutes');assert.equal(JSON.parse(options.body).polylineQuality,'HIGH_QUALITY');assert.equal(options.headers['X-Goog-FieldMask'],'routes.polyline.encodedPolyline');return {ok:true,json:async()=>({routes:[{polyline:{encodedPolyline:'??'}}]})};});assert(called);
+await assert.rejects(roadPath('test-key',{from:depot,to:[0,.01],departureTime:'2099-01-01T09:00:00Z'},async()=>({ok:true,json:async()=>({routes:[]})})),/trazado/);
+console.log('PASS: coincidencia total, parcial, ambos sentidos, cruces, calles separadas, depósito, tres camionetas y errores Google.');

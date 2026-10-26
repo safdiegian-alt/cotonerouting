@@ -1,0 +1,3 @@
+export const pointKey=p=>p.map(n=>Number(n).toFixed(6)).join(',');
+export function visitPoints(route,config){const points=[config.depotCoord];for(const t of route.timeline)if(pointKey(points.at(-1))!==pointKey(t.stop.coord))points.push(t.stop.coord);if(config.returnHome&&route.timeline.length&&pointKey(points.at(-1))!==pointKey(config.depotCoord))points.push(config.depotCoord);return points;}
+export function physicalVisits(route){let last=null,count=0;for(const t of route.timeline){if(t.stop.depot){last=null;continue;}const key=pointKey(t.stop.coord);if(key!==last)count++;last=key;}return count;}

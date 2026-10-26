@@ -1,0 +1,4 @@
+import {googleAccess,apiFailure,ApiError} from '@/lib/google';
+import {roadPath} from '@/lib/google-core.mjs';
+export const dynamic='force-dynamic';
+export async function POST(request:Request){try{const key=await googleAccess(request,'road-paths',40);const raw=await request.text();if(raw.length>12000)throw new ApiError('Pedido demasiado grande.',400);const {legs}=JSON.parse(raw);const valid=(p:unknown)=>Array.isArray(p)&&p.length===2&&p.every(n=>typeof n==='number'&&Number.isFinite(n))&&Math.abs(p[0])<=90&&Math.abs(p[1])<=180;if(!Array.isArray(legs)||!legs.length||legs.length>8||legs.some(l=>!valid(l.from)||!valid(l.to)||typeof l.departureTime!=='string'||!Number.isFinite(Date.parse(l.departureTime))))throw new ApiError('Tramos inválidos.',400);const paths=[];for(let i=0;i<legs.length;i+=4)paths.push(...await Promise.all(legs.slice(i,i+4).map(l=>roadPath(key,l))));return Response.json({paths},{headers:{'Cache-Control':'no-store'}})}catch(e){return apiFailure(e)}}

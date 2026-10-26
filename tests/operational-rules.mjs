@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {prepareAssignments,assignmentKey,isCenterStop,checkCenter} from '../public/assignment-rules.mjs';
+import {evaluate,vehicleContext,scorePlan,zoneEdges} from '../public/optimizer.mjs';
+import {optimizeTerritories} from '../public/territory-optimizer.mjs';
+import {improveDepot} from '../public/depot-planning.mjs';
+import {assessReadiness} from '../public/readiness.mjs';
+import {moveToVehicle} from '../public/manual-routing.mjs';
+import {visitPoints} from '../public/visit-utils.mjs';
+const depot=[-34.62,-58.48];
+const stop=(id,np,type='Retiro',extra={})=>({id,idx:id,np,type,centerOnly:false,address:'Calle '+id,city:'CABA',coord:[-34.62+id*.01,-58.48],windows:[[480,1000]],service:15,note:'',lines:[],...extra});
+const matrix=n=>({durations:Array.from({length:n+1},(_,i)=>Array.from({length:n+1},(_,j)=>i===j?0:300)),distances:Array.from({length:n+1},(_,i)=>Array.from({length:n+1},(_,j)=>i===j?0:1000))});
+const config={vehicles:2,start:480,end:1000,breakMinutes:20,twoTrips:true,returnHome:false,flexibleStart:false,depotCoord:depot,depotAddress:'Campana'};
+const pickup=prepareAssignments([stop(1,'P'),stop(2,'P')]);assert.notEqual(assignmentKey(pickup[0]),assignmentKey(pickup[1]));
+const paired=prepareAssignments([stop(1,'P'),stop(2,'P','Entrega')]);assert.equal(assignmentKey(paired[0]),assignmentKey(paired[1]));assert(!paired[0].depotBound);
+const split=optimizeTerritories([stop(1,'P','Retiro',{windows:[[485,485]]}),stop(2,'P','Retiro',{windows:[[485,485]]})],matrix(2),config,{budgetMs:1000});
+assert.equal(split.unassigned.length,0);assert.equal(split.routes.filter(r=>r.route.length).length,2);for(const r of split.routes){assert(r.timeline.at(-1).stop.finalUnload);assert.equal(r.end,525);assert.deepEqual(visitPoints(r,config).at(-1),depot);}
+const center=prepareAssignments([stop(1,'A','Entrega',{centerOnly:true}),stop(2,'B','Entrega',{centerOnly:true}),stop(3,'C')]);assert.equal(center[0].assignmentKey,center[1].assignmentKey);
+const cp=optimizeTerritories(center,matrix(3),config,{budgetMs:1000});assert.equal(cp.unassigned.length,0);assert(checkCenter(cp.routes));assert.equal(cp.routes.filter(r=>r.route.some(s=>s.centerOnly)).length,1);
+assert(isCenterStop({coord:[-34.602,-58.378]}));assert(!isCenterStop({coord:depot}));
+const cargo=prepareAssignments([stop(1,'A','Retiro',{coord:[-34.55,-58.48]}),stop(2,'B','Entrega',{coord:[-34.62,-58.56]})]);
+const m=matrix(2);m.durations[1][2]=480;m.distances[1][2]=1500;
+const ctx={...config,...m,returnHome:true,pickups:{A:[1]}};const direct=evaluate(cargo,ctx),unload=improveDepot(cargo,ctx);
+assert(unload.timeline.some(t=>t.stop.depot&&!t.stop.finalUnload));assert(unload.dist>direct.dist);assert.equal(unload.timeline.filter(t=>t.stop.depot).length,1);assert(!unload.timeline.at(-1).stop.finalUnload);assert.equal(unload.timeline.find(t=>t.stop.depot).end-unload.timeline.find(t=>t.stop.depot).begin,20);
+assert.equal(improveDepot(cargo,{...ctx,twoTrips:false}).timeline.filter(t=>t.stop.depot&&!t.stop.finalUnload).length,0);
+const tight=evaluate(pickup,{...config,...matrix(2),pickups:{P:[1,2]},end:510});assert.equal(tight,null);
+const readiness=assessReadiness([stop(1,'P'),stop(2,'P','Retiro',{address:''})]);assert.equal(readiness.ready.length,1);
+const deliveryBlocked=assessReadiness([stop(1,'P'),stop(2,'P','Entrega',{address:''})]);assert.equal(deliveryBlocked.ready.length,0);
+// Rebuild the destination when simple insertion into its old order cannot work.
+const a=stop(1,'A','Entrega',{windows:[[480,540]],service:5}),b=stop(2,'B','Entrega',{windows:[[480,600]],service:5}),x=stop(3,'X','Entrega',{windows:[[530,530]],service:5});
+const mm=matrix(3);mm.durations[3][1]=1800;mm.durations[3][2]=300;
+const cx={...config,...mm,pickups:{},twoTrips:false};const p={...scorePlan([evaluate([x],cx),evaluate([b,a],cx)],[],zoneEdges([a,b,x],mm)),matrix:mm,config:cx};
+const changed=moveToVehicle(p,3,1);assert(changed.routes[1].route.findIndex(s=>s.id===1)<changed.routes[1].route.findIndex(s=>s.id===3));assert.equal(changed.routes[0].route.length,0);
+console.log('PASS: split-only pickups, delivery dependencies, exclusive Center, final unloading, useful detour with added km, shifts, readiness and manual reordering.');

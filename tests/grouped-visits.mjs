@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {evaluate} from '../public/optimizer.mjs';
+const stops=Array.from({length:5},(_,i)=>({id:i+1,idx:i+1,np:'NP'+i,type:'Retiro',coord:[-34.549,-58.501],address:'Mejico 3630',service:15,windows:[[540,1020]]}));
+const ctx={start:540,end:1200,flexibleStart:false,returnHome:false,breakMinutes:30,depotCoord:[-34.62,-58.48],pickups:{},durations:Array.from({length:6},()=>Array(6).fill(0)),distances:Array.from({length:6},()=>Array(6).fill(0))};
+let r=evaluate(stops,ctx);assert.equal(r.end-r.start,15);assert.equal(r.visits.length,1);assert.equal(r.timeline.length,5);assert(r.timeline.every(t=>t.begin===540&&t.end===555&&t.sharedVisit));
+const late=stops.map(s=>({...s,windows:[[840,1020]]}));r=evaluate(late,{...ctx,flexibleStart:true});assert.equal(r.start,840);assert.equal(r.end,855);assert.equal(r.wait,0);
+const incompatible=[stops[0],{...stops[1],windows:[[900,1000]]}];incompatible[0]={...incompatible[0],windows:[[540,600]]};r=evaluate(incompatible,ctx);assert.equal(r.visits.length,2);assert.equal(r.end,915);assert.equal(r.wait,345);
+r=evaluate([stops[0],{...stops[1],service:30}],ctx);assert.equal(r.end,570);
+const separate=[stops[0],{...stops[1],address:'Otro domicilio',coord:[-34.55,-58.50]},stops[2]];r=evaluate(separate,ctx);assert.equal(r.visits.length,3);assert.equal(r.end,585);
+r=evaluate([stops[0],{...stops[1],np:stops[0].np,type:'Entrega'}],{...ctx,pickups:{NP0:[1]}});assert.equal(r.end,570);assert.equal(evaluate([{...stops[1],np:stops[0].np,type:'Entrega'},stops[0]],{...ctx,pickups:{NP0:[1]}}),null);
+console.log('PASS: 5 retiros = una visita de 15 min; horarios incompatibles, regreso al domicilio, duraciones especiales y precedencias conservados.');

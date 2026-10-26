@@ -1,0 +1,4 @@
+import {googleAccess,apiFailure,ApiError} from '@/lib/google';
+import {lookupAddress} from '@/lib/google-core.mjs';
+export const dynamic='force-dynamic';
+export async function POST(request:Request){try{const key=await googleAccess(request,'geocode',120);const raw=await request.text();if(raw.length>2000)throw new ApiError('La dirección es demasiado larga.',400);const data=JSON.parse(raw);const address=typeof data.address==='string'?data.address.trim():'';const placeId=typeof data.placeId==='string'?data.placeId.trim():'';if(placeId?!/^[A-Za-z0-9_-]{1,400}$/.test(placeId):!address||address.length>800)throw new ApiError('Ingresá una dirección válida.',400);const results=await lookupAddress(key,{address,placeId});return Response.json({results,provider:'Google Maps'},{headers:{'Cache-Control':'no-store'}})}catch(e){return apiFailure(e)}}

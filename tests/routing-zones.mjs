@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {optimize,zoneEdges,zoneMetrics} from '../public/optimizer.mjs';
+import {itinerary,routeLink,mapsURL} from '../public/route-links.mjs';
+const config={vehicles:2,start:480,end:620,returnHome:true,twoTrips:true,breakMinutes:30,depotCoord:[-34.6,-58.4],depotAddress:'Campana'};
+const points=[[0,0],[10,0],[11,0],[-10,0],[-11,0]];
+const matrix={distances:points.map(a=>points.map(b=>Math.hypot(a[0]-b[0],a[1]-b[1])*1000)),durations:points.map(a=>points.map(b=>Math.hypot(a[0]-b[0],a[1]-b[1])*120))};
+const stops=points.slice(1).map((p,i)=>({id:i+1,idx:i+1,np:'NP'+i,type:'Entrega',coord:[-34.6+p[1]/100,-58.4+p[0]/100],windows:[[480,610]],service:20,address:'Destino '+i}));
+const edges=zoneEdges(stops,matrix);assert.equal(edges.length,2);
+assert.equal(zoneMetrics([{route:[stops[0],stops[2]]},{route:[stops[1],stops[3]]}],edges).split,2);
+const r=optimize(stops,matrix,config);assert.equal(r.unassigned.length,0);assert.equal(r.zones.split,0);assert.equal(r.routes.filter(r=>r.timeline.length).length,2);
+console.log('PASS: zonas opuestas separadas; vecinos juntos, sin movimientos omitidos.');
+const exact=stops.slice(0,2).map(s=>({...s,windows:[[540,540]]}));const forced=optimize(exact,matrix,config);assert.equal(forced.unassigned.length,0);assert.equal(forced.zones.split,1);for(const r of forced.routes)for(const t of r.timeline)if(!t.stop.depot)assert.equal(t.begin,540);
+console.log('PASS: citas simultáneas dividen la zona cuando es necesario.');
+const linked=stops.map((s,i)=>({...s,np:i<2?'PICKUP-DELIVERY':s.np,type:i===0?'Retiro':'Entrega'}));const pair=optimize(linked,matrix,config);assert.equal(pair.unassigned.length,0);const own=pair.routes.find(r=>r.route.some(s=>s.id===1));assert(own.route.findIndex(s=>s.id===1)<own.route.findIndex(s=>s.id===2));
+console.log('PASS: retiro antes de entrega, misma camioneta.');
+const route={timeline:[...stops,...stops,{depot:true,coord:config.depotCoord,address:'Campana'},...stops].map((stop,i)=>({stop,begin:480+i*10,end:490+i*10})),end:700};const data=itinerary(route,config);const link=routeLink(route,config,'https://example.com');assert.deepEqual(JSON.parse(decodeURIComponent(new URL(link.url).hash.slice(1))),data);assert.equal(data.stops.length,14);assert(data.stops.some(s=>s.type==='Descanso en Campana'));assert.equal(data.stops.at(-1).type,'Regreso final a Campana');assert.throws(()=>mapsURL(Array(6).fill([0,0])));assert.equal(new URL(mapsURL(points)).searchParams.get('waypoints').split('|').length,3);
+console.log('PASS: un enlace preserva las 14 paradas, descanso y regreso; sin exceder límites de Maps.');
